@@ -1,0 +1,76 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Daniele Cavaglieri"
+date: "March 5, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The goal of this project is to train and test a machine learning algorithm able to correctly assess the quality of the execution of barbell lifts of an individual based on data recorded by accelerometric sensors placed on belt, forearm, arm, and dumbell. Data from six participants have been provided as training data set.
+
+## Load necessary packages and database
+
+First of all, we load all the necessary packages:
+```{r loadlib, message=FALSE}
+library(lattice)
+library(ggplot2)
+library(caret)
+library(randomForest)
+```
+then we get the data from the given url:
+```{r loaddata}
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+dim(training)
+```
+This dataset is composed of 160 variables for each of the 19622 entries.
+
+## Create training and validation sets
+We define a seeding value, in order to guarantee repeatability. Then, we divide the data set into training and validation set. For the size fo the two partitions, we choose a typical value of 60% for the training and 40% for the validation set.
+```{r partition}
+set.seed(157)
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+trainSet <- training[inTrain, ]
+dim(trainSet)
+testSet <- training[-inTrain, ]
+dim(testSet)
+```
+
+## Data Clean-up
+In order to eliminate those variables which will most likely not contribute to the accuracy of the prediction model, we first eliminate the labels of the test performed from the variable sets, i.e. the first five columns of the data set. Afterward, we remove those variables which are mostly empty (i.e. they show NA for more than 75% of the samples). Then, we remove those variables which have extremely small variance, since they can not offer any information concerning the variable we want to predict.
+```{r cleanup}
+trainSet <- trainSet[,-(1:5)]
+testSet <- testSet[,-(1:5)]
+
+isNA <- sapply(trainSet, function(x) mean(is.na(x))) > 0.75
+trainSet <- trainSet[, isNA==FALSE]
+testSet <- testSet[, isNA==FALSE]
+
+zerovar <- nearZeroVar(trainSet)
+trainSet <- trainSet[,-zerovar]
+dim(trainSet)
+testSet <- testSet[,-zerovar]
+dim(testSet)
+```
+This procedure reduces the number of initial variables to about 30%. This will significantly speed up the training phase, while building our predicting model.
+
+## Random forest model
+
+We choose to implement a random forest model, which is known to lead excellent results in this kind of problems. We use 5-fold cross-validation to optimally tune the model parameters. The first model obtained had a tree size of 500. Setting the maximum size limit to 100 allows to obtain a model which is only slightly less accurate than the previous one, but significantly smaller.
+```{r randomforest}
+trainCon <- trainControl(method="cv", number=5)
+mod_rf <- train(classe ~ ., data=trainSet, method="rf", trControl=trainCon, ntree=100)
+mod_rf$finalModel
+```
+As we can see, the model provides excellent results on the training set, with an error rate of only 0.32%.
+
+## Model validation
+
+Using the remaining portion of the data for validation purpose allows to appreciate the extreme accuracy of the model we derived.
+```{r validation}
+pred_rf <- predict(mod_rf, newdata=testSet)
+confusionMatrix(testSet$classe, pred_rf)
+```
+In particular, the accuracy is over 99% on the validation set, and the few cases of misclassification all happen within a distance of one from the correct class, except for one sample which falls within a distance of two.
